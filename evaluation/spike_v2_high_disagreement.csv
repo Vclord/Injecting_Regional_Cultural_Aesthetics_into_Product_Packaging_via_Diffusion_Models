@@ -1,0 +1,6 @@
+filename,session1_text_legibility,session1_regional_appropriateness,session1_packaging_plausibility,session1_visual_quality,session2_text_legibility,session2_regional_appropriateness,session2_packaging_plausibility,session2_visual_quality
+baseline_p1_s1337.png,0,1,2,1,0,0,1,0
+baseline_p1_s42.png,0,0,2,1,1,1,1,1
+baseline_p3_s1337.png,0,0,1,1,0,1,0,0
+plus_tanjore_p1_s1337_sc05.png,0,2,1,2,0,1,0,1
+plus_tanjore_p3_s1337_sc05.png,1,2,0,2,0,1,0,1

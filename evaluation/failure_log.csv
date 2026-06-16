@@ -1,0 +1,13 @@
+filename,state_target,method,ip_scale,text_quality,aesthetic_match,brand_identity,failure_mode,notes
+tamil_nadu_seed42.png,tamil_nadu,prompt_only,,,,,,
+tamil_nadu_seed123.png,tamil_nadu,prompt_only,,,,,,
+tamil_nadu_seed777.png,tamil_nadu,prompt_only,,,,,,
+west_bengal_seed42.png,west_bengal,prompt_only,,,,,,
+west_bengal_seed123.png,west_bengal,prompt_only,,,,,,
+west_bengal_seed777.png,west_bengal,prompt_only,,,,,,
+punjab_seed42.png,punjab,prompt_only,,,,,,
+punjab_seed123.png,punjab,prompt_only,,,,,,
+punjab_seed777.png,punjab,prompt_only,,,,,,
+gujarat_seed42.png,gujarat,prompt_only,,,,,,
+gujarat_seed123.png,gujarat,prompt_only,,,,,,
+gujarat_seed777.png,gujarat,prompt_only,,,,,,
