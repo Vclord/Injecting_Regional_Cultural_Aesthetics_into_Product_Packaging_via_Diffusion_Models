@@ -36,8 +36,7 @@ See `examples/` for representative final-pipeline outputs across the three tradi
 
 ### Trained LoRA weights
 LoRA checkpoints are too large for GitHub. Download from 
-[-[SDXL LoRA](https://huggingface.co/Vclord/sdxl-packaging-lora-indian-snacks)
-- [FLUX LoRA](https://huggingface.co/Vclord/flux-packaging-lora-indian-snacks)]:
+[-[SDXL LoRA](https://huggingface.co/Vclord/sdxl-packaging-lora-indian-snacks) [FLUX LoRA](https://huggingface.co/Vclord/flux-packaging-lora-indian-snacks)]:
 - `sdxl_packaging_lora_r16_steps2000.safetensors` (~200 MB)
 - `flux_packaging_lora_r16_res1024_steps2000.safetensors` (~700 MB)
 
