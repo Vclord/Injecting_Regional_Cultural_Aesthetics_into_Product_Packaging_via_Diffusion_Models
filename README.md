@@ -75,4 +75,5 @@ Image attributions: per-image as recorded in `data/*_metadata.csv`
 
 ## Contact
 
-Vivek Chandra — vic00089 at students dot stir dot ac dot uk
+Vivek Chandra — vivekchandra726@gmail.com
+                vic00089@students.stir.ac.uk
