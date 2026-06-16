@@ -69,7 +69,7 @@ If you use this work or its evaluation artefacts, please cite:
 
 ## Licence
 
-Code: Apache 2.0 Licence (see `LICENSE`)
+Code: Apache-2.0 Licence (see `LICENSE`)
 Evaluation data and metadata: CC-BY 4.0
 Image attributions: per-image as recorded in `data/*_metadata.csv`
 
