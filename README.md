@@ -35,7 +35,7 @@ See `examples/` for representative final-pipeline outputs across the three tradi
 ## Reproducibility
 
 ### Interactive demo
-The demo deployed can be found here: [https://vivekchandra726--folk-art-pipeline-web.modal.run](https://vivekchandra726--folk-art-pipeline-web.modal.run/)
+The demo deployed can be found here: [modal demo](https://vivekchandra726--folk-art-pipeline-web.modal.run/)
 
 ### Trained LoRA weights
 LoRA checkpoints are too large for GitHub. Download from 
