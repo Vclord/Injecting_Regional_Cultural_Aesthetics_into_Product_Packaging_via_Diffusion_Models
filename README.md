@@ -34,6 +34,9 @@ See `examples/` for representative final-pipeline outputs across the three tradi
 
 ## Reproducibility
 
+### Interactive demo
+The demo deployed can be found here: [https://vivekchandra726--folk-art-pipeline-web.modal.run](https://vivekchandra726--folk-art-pipeline-web.modal.run/)
+
 ### Trained LoRA weights
 LoRA checkpoints are too large for GitHub. Download from 
 [-[SDXL LoRA](https://huggingface.co/Vclord/sdxl-packaging-lora-indian-snacks) [FLUX LoRA](https://huggingface.co/Vclord/flux-packaging-lora-indian-snacks)]:
