@@ -1,4 +1,24 @@
 """
+prompt to LLM:
+Write a Python script (download_openfoodfacts.py) using requests and pandas to scrape Indian snack packaging images
+from the Open Food Facts (OFF) v2 API. I need the script to:
+1.Query the search API for specific categories (e.g., "Snacks", "Salty-snacks", "Potato-crisps") where the country is
+tagged as India (countries_tags_en=India).
+2.Extract the highest-resolution front-of-pack image available (look for image_front_url and replace .400.jpg or
+.200.jpg with .full.jpg). Download the raw binary to data/raw/_unsorted/<product_code>.jpg. Ignore tiny placeholder
+files under 8KB.
+3.Save a rich metadata CSV (_metadata_raw.csv) tracking the product name, brands, categories, language tags, and the
+exact source URL for licensing tracking.
+4.Include a simple heuristic dictionary function that checks the brand name and provides a "state hint" string (
+e.g., if brand contains "haldiram", flag as "gujarat" or "pan_india") to help me manually curate the dataset later.
+System Requirements:
+Implement pagination (page_size=100) and enforce a strict 0.5-second time.sleep() delay to respect the OFF rate limit
+(~2 requests/sec).
+Maintain a custom User-Agent header declaring this is for academic research at my university.
+If the script crashes or I hit my --max-products limit, it must be able to load the existing CSV on the next run and
+skip downloading barcodes it has already processed. Wrap this in an argparse CLI.
+"""
+"""
 download_openfoodfacts.py
 =========================
 Download Indian snack packaging images from Open Food Facts (OFF) for
@@ -60,13 +80,16 @@ from tqdm import tqdm
 # ----------------------------------------------------------------------
 
 OFF_SEARCH_URL = "https://world.openfoodfacts.org/api/v2/search"
+
+# Academic usage compliance: explicit identification to prevent IP blocks
 USER_AGENT = (
     "MScDissertation-VivekChandra/1.0 "
     "(Stirling University; research use; "
     "contact: vic00089@students.stir.ac.uk)"
 )
-# Categories to query. Each gets its own request; results are deduplicated by barcode.
-# These are OFF "categories_tags_en" slugs — broad on purpose.
+
+# Categories mapped to OFF "categories_tags_en" slugs.
+# Results are deduplicated by barcode later.
 CATEGORIES = [
     "Snacks",
     "Salty-snacks",
@@ -75,16 +98,16 @@ CATEGORIES = [
     "Potato-crisps",
     "Flavoured-potato-crisps",
 ]
-# Hint: brand substrings (lower-case) → likely Indian state.
-# Used only to populate a "state_hint" column. NOT used for filtering.
-# Add to this freely — it just helps your manual sort.
+
+# Heuristic prior mapping: brand substrings to likely geographic origin.
+# Used strictly to populate a metadata hint column to accelerate manual curation.
 BRAND_STATE_HINTS = {
     # Gujarat-origin brands
     "balaji":    "gujarat",
     "haldiram":  "gujarat",      # Rajasthan/Delhi origin but pan-Indian; flag for review
     "gopal":     "gujarat",
     # Punjab / North India
-    "bikaji":    "rajasthan",    # not in your 3 states but useful hint
+    "bikaji":    "rajasthan",
     "kurkure":   "pan_india",
     "lays":      "pan_india",
     "bingo":     "pan_india",
@@ -93,9 +116,10 @@ BRAND_STATE_HINTS = {
     "beta":      "tamil_nadu",
     "a1":        "tamil_nadu",
     # West Bengal
-    "haldiram":  "pan_india",    # overridden above; just a note
+    "haldiram":  "pan_india",
 }
-# Fields to request from OFF (smaller payload = faster)
+
+# Restrict the payload fields to minimize bandwidth and JSON parsing overhead
 OFF_FIELDS = ",".join([
     "code", "product_name", "product_name_en", "brands", "brands_tags",
     "categories_tags", "countries_tags", "languages_tags",
@@ -104,9 +128,10 @@ OFF_FIELDS = ",".join([
     "images",
 ])
 
-PAGE_SIZE = 100  # OFF max
-REQUEST_DELAY_SEC = 0.5  # respect OFF: ~2 req/sec is fine
+PAGE_SIZE = 100          # OFF API structural maximum
+REQUEST_DELAY_SEC = 0.5  # Throttling to respect OFF rate limits (~2 req/sec)
 DOWNLOAD_TIMEOUT_SEC = 15
+
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": USER_AGENT})
 
@@ -124,7 +149,9 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ProductRecord:
-    """One row in the metadata CSV."""
+    """
+    Standardised schema for exporting the retrieved API metadata to CSV.
+    """
     code: str
     product_name: str
     brands: str
@@ -143,7 +170,16 @@ class ProductRecord:
 # ----------------------------------------------------------------------
 
 def state_hint_from_brand(brands: str) -> str:
-    """Best-effort guess at Indian state from brand string."""
+    """
+    Applies a best-effort substring heuristic to infer the product's
+    regional market based on the brand string.
+
+    Args:
+        brands (str): Raw brand string retrieved from the OFF payload.
+
+    Returns:
+        str: The inferred state/region string, or an empty string if no match is found.
+    """
     if not brands:
         return ""
     b = brands.lower()
@@ -155,18 +191,22 @@ def state_hint_from_brand(brands: str) -> str:
 
 def pick_best_image_url(product: dict) -> Optional[str]:
     """
-    Choose the highest-resolution front image available.
+    Resolves the URL pointing to the highest-resolution front image available.
 
-    OFF gives image_front_url (usually 400px) and an `images` dict with full
-    metadata. We try to upgrade to full-resolution if possible.
+    OFF provides an `image_front_url` (usually capped at 400px width). This function
+    parses the CDN URL structure to request the uncompressed `.full.jpg` asset.
+
+    Args:
+        product (dict): The parsed JSON dictionary for a single product.
+
+    Returns:
+        Optional[str]: The upgraded image URL, or None if no front image exists.
     """
     front_url = product.get("image_front_url")
     if not front_url:
         return None
 
-    # OFF image URL pattern:
-    # https://images.openfoodfacts.org/images/products/.../front_en.RR.400.jpg
-    # Where RR is the revision. Replace .400. with .full. for the biggest version.
+    # Structural mapping: replace the spatial dimension constraint with '.full.'
     if ".400.jpg" in front_url:
         return front_url.replace(".400.jpg", ".full.jpg")
     if ".200.jpg" in front_url:
@@ -175,7 +215,16 @@ def pick_best_image_url(product: dict) -> Optional[str]:
 
 
 def fetch_page(category: str, page: int) -> dict:
-    """Fetch one page from OFF search API."""
+    """
+    Executes a structured query against the OFF API.
+
+    Args:
+        category (str): The target taxonomy slug.
+        page (int): The current pagination index.
+
+    Returns:
+        dict: The parsed JSON payload containing the search results.
+    """
     params = {
         "countries_tags_en": "India",
         "categories_tags_en": category,
@@ -189,17 +238,32 @@ def fetch_page(category: str, page: int) -> dict:
 
 
 def download_image(url: str, dest: Path) -> bool:
-    """Download one image; skip if it already exists."""
+    """
+    Streams the raw image binary to disk, utilizing a byte-size heuristic
+    to filter out placeholders and corrupt files.
+
+    Args:
+        url (str): The target CDN URL.
+        dest (Path): The local filesystem path to write the binary.
+
+    Returns:
+        bool: True if the file is successfully saved or already exists, False otherwise.
+    """
+    # Skip download if the file is already structurally present
     if dest.exists() and dest.stat().st_size > 0:
         return True
+
     try:
         r = SESSION.get(url, timeout=DOWNLOAD_TIMEOUT_SEC, stream=True)
         r.raise_for_status()
-        # quick size sanity: skip tiny images (<8 KB)
+
         content = r.content
+        # Heuristic: Valid packaging photos are rarely under 8KB.
+        # Anything smaller is typically a CDN artifact or placeholder.
         if len(content) < 8 * 1024:
             log.debug(f"  Skipping {url}: image too small ({len(content)} bytes)")
             return False
+
         dest.write_bytes(content)
         return True
     except requests.RequestException as e:
@@ -212,12 +276,23 @@ def download_image(url: str, dest: Path) -> bool:
 # ----------------------------------------------------------------------
 
 def collect(out_dir: Path, max_products: int) -> list[ProductRecord]:
-    """Iterate categories and pages until max_products downloaded."""
+    """
+    Orchestrates the entire data retrieval pipeline: manages API pagination,
+    rate limiting, data structural mapping, and disk writes. Supports resuming
+    from interrupted states.
+
+    Args:
+        out_dir (Path): The target directory for the raw assets.
+        max_products (int): The halt condition limiting total valid downloads.
+
+    Returns:
+        list[ProductRecord]: A list of all populated metadata structures.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     seen_codes: set[str] = set()
     records: list[ProductRecord] = []
 
-    # If a metadata CSV already exists, load it to support resume
+    # State recovery: Load existing CSV to avoid redundant API queries and downloads
     meta_path = out_dir / "_metadata_raw.csv"
     if meta_path.exists():
         existing = pd.read_csv(meta_path, dtype=str).fillna("")
@@ -231,6 +306,7 @@ def collect(out_dir: Path, max_products: int) -> list[ProductRecord]:
             break
         log.info(f"Category: {category}")
         page = 1
+
         while len(records) < max_products:
             try:
                 payload = fetch_page(category, page)
@@ -254,7 +330,7 @@ def collect(out_dir: Path, max_products: int) -> list[ProductRecord]:
                 if not image_url:
                     continue
 
-                # Download
+                # Execute binary download
                 image_path = out_dir / f"{code}.jpg"
                 if not download_image(image_url, image_path):
                     continue
@@ -274,7 +350,7 @@ def collect(out_dir: Path, max_products: int) -> list[ProductRecord]:
                 records.append(record)
                 new_this_page += 1
 
-                # Periodic save every 20 records
+                # Flush metadata to disk periodically to mitigate data loss on crash
                 if len(records) % 20 == 0:
                     save_metadata(records, meta_path)
                     log.info(f"  ... {len(records)} downloaded")
@@ -282,19 +358,28 @@ def collect(out_dir: Path, max_products: int) -> list[ProductRecord]:
                 if len(records) >= max_products:
                     break
 
+                # Maintain strict compliance with OFF API throttling rules
                 time.sleep(REQUEST_DELAY_SEC)
 
             log.info(f"  Page {page} done. New on page: {new_this_page}. Total: {len(records)}.")
             page += 1
+            # Break pagination loop if the API yields an empty page
             if new_this_page == 0:
                 break
 
+    # Final dataset flush
     save_metadata(records, meta_path)
     return records
 
 
 def save_metadata(records: list[ProductRecord], path: Path) -> None:
-    """Atomic-ish CSV write."""
+    """
+    Serializes the memory list of dataclasses into a CSV file.
+
+    Args:
+        records (list[ProductRecord]): Current dataset records.
+        path (Path): Disk path to the output CSV.
+    """
     rows = [asdict(r) for r in records]
     df = pd.DataFrame(rows)
     df.to_csv(path, index=False, quoting=csv.QUOTE_MINIMAL)
@@ -305,6 +390,7 @@ def save_metadata(records: list[ProductRecord], path: Path) -> None:
 # ----------------------------------------------------------------------
 
 def main() -> None:
+    """Initialises CLI parameter parsing and starts the collection sequence."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
         "--out-dir",
